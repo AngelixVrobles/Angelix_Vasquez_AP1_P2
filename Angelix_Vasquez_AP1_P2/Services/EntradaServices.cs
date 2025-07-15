@@ -14,6 +14,12 @@ namespace Angelix_Vasquez_AP1_P2.Services
             DbFactory = dbFactory;
         }
 
+        public async Task<List<Producto>> ListarProductos()
+        {
+            await using var contexto = await DbFactory.CreateDbContextAsync();
+            return await contexto.Productos.AsNoTracking().ToListAsync();
+        }
+
         public async Task<bool> Existe(int id)
         {
             await using var contexto = await DbFactory.CreateDbContextAsync();
@@ -39,12 +45,19 @@ namespace Angelix_Vasquez_AP1_P2.Services
         {
             await using var contexto = await DbFactory.CreateDbContextAsync();
 
+            // Actualizar la entrada principal
             contexto.Entry(entrada).State = EntityState.Modified;
 
+            // Cargar detalles existentes para borrarlos y luego agregar los nuevos (simplificación)
+            var detallesExistentes = contexto.EntradasDetalle.Where(ed => ed.EntradasId == entrada.EntradasId);
+            contexto.EntradasDetalle.RemoveRange(detallesExistentes);
+
+            // Añadir los nuevos detalles
             foreach (var detalle in entrada.EntradasDetalle)
             {
                 if (detalle.ProductoId <= 0)
                     throw new InvalidOperationException($"ProductoId {detalle.ProductoId} no es válido para el detalle.");
+                contexto.EntradasDetalle.Add(detalle);
             }
 
             return await contexto.SaveChangesAsync() > 0;
