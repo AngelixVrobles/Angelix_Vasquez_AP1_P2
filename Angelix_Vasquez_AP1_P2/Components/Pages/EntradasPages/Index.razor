@@ -1,0 +1,204 @@
+﻿@page "/Entrada/Index"
+@inject EntradaServices EntradaServices
+@inject ProductoServices ProductoServices
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Entrada de Productos Empacados</PageTitle>
+
+<div class="container">
+    <div class="card shadow-lg">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title m-0">Entrada de Productos Empacados</h5>
+        </div>
+
+        <div class="card-body">
+            <EditForm Model="entradas" OnValidSubmit="GuardarEntrada">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                @* ID de la Entrada *@
+                <div class="mb-3">
+                    <label for="entradaId" class="form-label"><strong>ID</strong></label>
+                    <InputNumber id="entradaId" class="form-control" @bind-Value="entradas.EntradasId" readonly />
+                </div>
+
+                @* Fecha de Entrada *@
+                <div class="mb-3">
+                    <label for="fecha" class="form-label"><strong>Fecha</strong></label>
+                    <InputDate id="fecha" class="form-control" @bind-Value="entradas.Fecha" />
+                </div>
+
+                @* Concepto de Entrada *@
+                <div class="mb-3">
+                    <label for="concepto" class="form-label"><strong>Concepto</strong></label>
+                    <InputText id="concepto" class="form-control" @bind-Value="entradas.Concepto" />
+                </div>
+
+                @* Productos Utilizados *@
+                <h5><strong>Productos Utilizados</strong></h5>
+                <div class="row">
+                    <div class="col-6">
+                        <label class="form-label"><strong>Producto</strong></label>
+                        <InputSelect class="form-select" @bind-Value="selectedProductoId">
+                            <option value="0" disabled>Seleccione un producto</option>
+                            @foreach (var producto in productosDisponibles)
+                            {
+                                <option value="@producto.ProductosId">@producto.Descripcion</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="col-3">
+                        <label class="form-label"><strong>Cantidad</strong></label>
+                        <InputNumber class="form-control" @bind-Value="cantidadProducto" min="1" />
+                    </div>
+
+                    <div class="col-3">
+                        <button type="button" class="btn btn-outline-success mt-4" @onclick="AgregarProducto">+ Add</button>
+                    </div>
+                </div>
+
+                @* Tabla de Productos Utilizados *@
+                <table class="table table-bordered text-center mt-3">
+                    <thead>
+                        <tr>
+                            <th>ProductoId</th>
+                            <th>Descripción</th>
+                            <th>Cantidad</th>
+                            <th>Eliminar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var producto in productosUtilizados)
+                        {
+                            <tr>
+                                <td>@producto.ProductoId</td>
+                                <td>@producto.Descripcion</td>
+                                <td>@producto.Cantidad</td>
+                                <td>
+                                    <button type="button" class="btn btn-outline-danger bi bi-trash" @onclick="() => EliminarProducto(producto)"></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                @* Peso Total *@
+                <div class="mb-3">
+                    <label class="form-label"><strong>Peso Total</strong></label>
+                    <InputNumber class="form-control" @bind-Value="pesoTotal" readonly />
+                </div>
+
+                @* Botones de acción *@
+                <div class="d-flex justify-content-between">
+                    <button type="submit" class="btn btn-success"><span class="bi bi-save"></span> Guardar</button>
+                    <button type="button" class="btn btn-danger" @onclick="Cancelar"><span class="bi bi-x-circle"></span> Cancelar</button>
+                </div>
+
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private Entradas entradas = new Entradas(); // Aquí está el objeto de la clase 'Entradas'
+    private List<Producto> productos = new List<Producto>(); // Todos los productos disponibles
+    private List<ProductoUtilizado> productosUtilizados = new List<ProductoUtilizado>(); // Los productos seleccionados para esta entrada
+    private List<Producto> productosDisponibles = new List<Producto>(); // Productos disponibles para agregar
+    private double pesoTotal = 0;
+
+    private int selectedProductoId { get; set; }
+    private int cantidadProducto { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Cargar productos disponibles desde el servicio
+        productosDisponibles = await ProductoServices.Listar(p => true);
+    }
+
+    private void AgregarProducto()
+    {
+        // Buscar el producto seleccionado
+        var productoSeleccionado = productosDisponibles.FirstOrDefault(p => p.ProductosId == selectedProductoId);
+
+        if (productoSeleccionado != null && cantidadProducto > 0)
+        {
+            // Agregar el producto a la lista de productos utilizados
+            productosUtilizados.Add(new ProductoUtilizado
+                {
+                    ProductoId = productoSeleccionado.ProductosId,
+                    Descripcion = productoSeleccionado.Descripcion,
+                    Cantidad = cantidadProducto,
+                    Peso = productoSeleccionado.Peso
+                });
+
+            // Actualizar peso total
+            pesoTotal += productoSeleccionado.Peso * cantidadProducto;
+
+            // Eliminar el producto de la lista de productos disponibles (lo mueve a productos utilizados)
+            productosDisponibles.Remove(productoSeleccionado);
+
+            // Limpiar los campos de selección
+            selectedProductoId = 0;
+            cantidadProducto = 0;
+        }
+    }
+
+    private void EliminarProducto(ProductoUtilizado producto)
+    {
+        // Eliminar producto de la lista de productos utilizados
+        productosUtilizados.Remove(producto);
+
+        // Recuperar el producto eliminado y agregarlo de nuevo a la lista de productos disponibles
+        var productoSeleccionado = new Producto
+            {
+                ProductosId = producto.ProductoId,
+                Descripcion = producto.Descripcion,
+                Peso = producto.Peso // Asumiendo que 'Peso' es propiedad del producto
+            };
+
+        productosDisponibles.Add(productoSeleccionado);
+
+        // Actualizar peso total
+        pesoTotal -= producto.Peso * producto.Cantidad;
+    }
+
+    private async Task GuardarEntrada()
+    {
+        // Validación si no hay productos utilizados
+        if (productosUtilizados.Count == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Debe agregar al menos un producto.");
+            return;
+        }
+
+        // Convertir ProductoUtilizado a EntradasDetalle
+        entradas.EntradasDetalle = productosUtilizados.Select(p => new EntradasDetalle
+            {
+                ProductoId = p.ProductoId,
+                Cantidad = p.Cantidad,
+                Producto = new Producto // Crear un objeto Producto si lo necesitas
+                {
+                    ProductosId = p.ProductoId,
+                    Descripcion = p.Descripcion,
+                    Peso = p.Peso // Asumiendo que la propiedad Peso está en el producto
+                }
+            }).ToList(); // Convierte a una lista
+
+
+        await EntradaServices.Guardar(entradas);
+
+
+        NavigationManager.NavigateTo("/Entrada/Index");
+    }
+
+
+    private void Cancelar()
+    {
+        // Limpiar campos y redirigir
+        entradas = new Entradas();
+        productosUtilizados.Clear();
+        NavigationManager.NavigateTo("/Entrada/Index");
+    }
+}
